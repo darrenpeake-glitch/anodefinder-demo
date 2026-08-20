@@ -78,6 +78,7 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
   const [serviceDate, setServiceDate] = useState(() => todayIso())
   const [reminderMonths, setReminderMonths] = useState('12')
   const [serviceNote, setServiceNote] = useState('')
+  const [serviceItems, setServiceItems] = useState({})
 
   const driveBrands = useMemo(() =>
     [...new Set(products.filter((p) => p.applicationBrand !== 'Sleipner').map((p) => p.applicationBrand))].sort(),
@@ -128,6 +129,17 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
     })
   }, [recommendationGroups])
 
+  useEffect(() => {
+    if (!recordingService) return
+    setServiceItems((current) => {
+      const next = {}
+      recommendations.forEach(({ product }) => {
+        next[product.sku] = current[product.sku] || { selected: true, qty: 1 }
+      })
+      return next
+    })
+  }, [recordingService, recommendations])
+
   const boatHistory = useMemo(() => {
     if (!savedBoat) return []
     return history.filter((entry) => entry.boatName === savedBoat.name).sort((a, b) => b.date.localeCompare(a.date))
@@ -177,8 +189,32 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
     setAddedAll(true)
   }
 
+  function toggleServiceItem(sku) {
+    setServiceItems((items) => ({
+      ...items,
+      [sku]: { ...(items[sku] || { qty: 1 }), selected: !(items[sku]?.selected ?? true) },
+    }))
+  }
+
+  function setServiceQty(sku, qty) {
+    const safeQty = Math.max(1, Math.min(20, Number(qty) || 1))
+    setServiceItems((items) => ({
+      ...items,
+      [sku]: { ...(items[sku] || { selected: true }), qty: safeQty },
+    }))
+  }
+
   function recordService() {
     if (!savedBoat || !serviceDate || !recommendations.length) return
+    const fittedItems = recommendations
+      .filter(({ product }) => serviceItems[product.sku]?.selected)
+      .map(({ product, system }) => ({
+        sku: product.sku,
+        system,
+        qty: serviceItems[product.sku]?.qty || 1,
+      }))
+    if (!fittedItems.length) return
+
     const entry = {
       id: `${Date.now()}`,
       boatName: savedBoat.name,
@@ -192,21 +228,23 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
         thruster: savedBoat.thruster,
         water: savedBoat.water,
       },
-      items: recommendations.map(({ product, system }) => ({ sku: product.sku, system })),
+      items: fittedItems,
     }
     const next = [entry, ...history]
     localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
     setHistory(next)
     setRecordingService(false)
     setServiceNote('')
+    setServiceItems({})
   }
 
   function reorderEntry(entry) {
-    entry.items
-      .map((item) => products.find((product) => product.sku === item.sku))
-      .filter(Boolean)
-      .filter(priced)
-      .forEach((product) => onAddProduct(product))
+    entry.items.forEach((item) => {
+      const product = products.find((candidate) => candidate.sku === item.sku)
+      if (!product || !priced(product)) return
+      const qty = Math.max(1, Number(item.qty) || 1)
+      for (let i = 0; i < qty; i += 1) onAddProduct(product)
+    })
   }
 
   const pricedProducts = recommendations.map(({ product }) => product).filter(priced)
@@ -217,6 +255,7 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
   const coverageComplete = totalSystems > 0 && matchedSystems === totalSystems
   const commercialComplete = recommendations.length > 0 && pendingCount === 0
   const lastService = boatHistory[0] || null
+  const selectedServiceCount = recommendations.filter(({ product }) => serviceItems[product.sku]?.selected).length
 
   return (
     <section className="myboat" id="my-boat">
@@ -259,11 +298,23 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
           </div>
 
           {recordingService && <div className="service-form">
-            <div><strong>Record this shortlist as replaced</strong><span>Demo history records the currently matched SKUs against this boat. In production, customers will be able to tick individual fitted parts.</span></div>
+            <div><strong>What was actually fitted?</strong><span>Select the parts changed during this service and record the fitted quantity. The service history will preserve exactly what was installed.</span></div>
+            <div className="service-parts">
+              {recommendations.map(({ product, system }) => {
+                const item = serviceItems[product.sku] || { selected: true, qty: 1 }
+                return <div className={`service-part ${item.selected ? 'selected' : ''}`} key={product.sku}>
+                  <label className="service-check">
+                    <input type="checkbox" checked={item.selected} onChange={() => toggleServiceItem(product.sku)} />
+                    <span><small>{system}</small><strong>{product.use}</strong><em>Tecnoseal {product.sku} · {product.material}</em></span>
+                  </label>
+                  <label className="service-qty"><span>Qty fitted</span><input type="number" min="1" max="20" disabled={!item.selected} value={item.qty} onChange={(e) => setServiceQty(product.sku, e.target.value)} /></label>
+                </div>
+              })}
+            </div>
             <label><span>Replacement date</span><input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} /></label>
             <label><span>Remind me in</span><select value={reminderMonths} onChange={(e) => setReminderMonths(e.target.value)}><option value="0">No reminder</option><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option><option value="18">18 months</option><option value="24">24 months</option></select></label>
-            <label className="service-note"><span>Note (optional)</span><input value={serviceNote} onChange={(e) => setServiceNote(e.target.value)} placeholder="e.g. all anodes changed at lift-out" /></label>
-            <button className="primary" disabled={!recommendations.length} onClick={recordService}>Save service record</button>
+            <label className="service-note"><span>Note (optional)</span><input value={serviceNote} onChange={(e) => setServiceNote(e.target.value)} placeholder="e.g. drive kit changed; thruster anode still serviceable" /></label>
+            <button className="primary" disabled={!selectedServiceCount} onClick={recordService}>Save {selectedServiceCount} fitted item{selectedServiceCount === 1 ? '' : 's'}</button>
           </div>}
 
           <div className="annual-head"><div><strong>Annual anode shortlist</strong><span>Compatibility matches from the verified demo catalogue.</span></div>{recommendations.length > 0 && <div><strong>{pricedTotal > 0 ? money(pricedTotal) : '—'}</strong><span>{pendingCount ? `${pendingCount} price${pendingCount === 1 ? '' : 's'} pending` : 'priced items inc VAT'}</span></div>}</div>
@@ -275,17 +326,20 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
           <div className="service-history">
             <div className="service-history-head"><div><strong>Service history</strong><span>{boatHistory.length ? `${boatHistory.length} replacement record${boatHistory.length === 1 ? '' : 's'} stored on this device.` : 'Record a replacement to start the vessel history.'}</span></div></div>
             {boatHistory.map((entry) => {
-              const currentItems = entry.items.map((item) => products.find((product) => product.sku === item.sku)).filter(Boolean)
-              const reorderable = currentItems.filter(priced)
-              const reorderTotal = reorderable.reduce((sum, product) => sum + retailPriceIncVat(product.tradeExVat), 0)
+              const reorderable = entry.items.map((item) => {
+                const product = products.find((candidate) => candidate.sku === item.sku)
+                return product && priced(product) ? { product, qty: Math.max(1, Number(item.qty) || 1) } : null
+              }).filter(Boolean)
+              const reorderTotal = reorderable.reduce((sum, item) => sum + retailPriceIncVat(item.product.tradeExVat) * item.qty, 0)
+              const totalQty = entry.items.reduce((sum, item) => sum + Math.max(1, Number(item.qty) || 1), 0)
               return <article className="service-entry" key={entry.id}>
-                <div><span>{formatDate(entry.date)}</span><strong>{entry.items.length} recorded anode line{entry.items.length === 1 ? '' : 's'}</strong><small>{entry.items.map((item) => item.sku).join(' · ')}</small>{entry.note && <small>{entry.note}</small>}</div>
-                <div className="service-entry-actions"><span>{entry.reminderDate ? `Reminder ${formatDate(entry.reminderDate)}` : 'No reminder'}</span>{reorderable.length > 0 && <button onClick={() => reorderEntry(entry)}>Reorder priced items · {money(reorderTotal)}</button>}</div>
+                <div><span>{formatDate(entry.date)}</span><strong>{totalQty} fitted anode{totalQty === 1 ? '' : 's'} across {entry.items.length} line{entry.items.length === 1 ? '' : 's'}</strong><small>{entry.items.map((item) => `${Math.max(1, Number(item.qty) || 1)}× ${item.sku}`).join(' · ')}</small>{entry.note && <small>{entry.note}</small>}</div>
+                <div className="service-entry-actions"><span>{entry.reminderDate ? `Reminder ${formatDate(entry.reminderDate)}` : 'No reminder'}</span>{reorderable.length > 0 && <button onClick={() => reorderEntry(entry)}>Reorder exact fitted set · {money(reorderTotal)}</button>}</div>
               </article>
             })}
           </div>
 
-          <div className="annual-disclaimer">This is a compatibility shortlist, not yet a guaranteed complete service schedule. Production My Boat will only call a set “complete” when every fitted system and required quantity has been explicitly mapped.</div>
+          <div className="annual-disclaimer">This is a compatibility shortlist, not yet a guaranteed complete service schedule. Service history records only the items the customer says were actually fitted, with quantities, so future reorders can reproduce that set accurately.</div>
         </>
       )}
     </section>
