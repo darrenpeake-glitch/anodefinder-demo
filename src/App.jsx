@@ -3,7 +3,9 @@ import { products, retailPriceExVat, retailPriceIncVat, money, TARGET_MARGIN, FL
 import { mercuryCatalogue } from './data/mercuryCatalogue.js'
 import MyBoat from './MyBoat.jsx'
 
-const catalogueProducts = [...products, ...mercuryCatalogue]
+// Remove legacy demo records that have been replaced by canonical catalogue SKUs.
+const legacyProductSkus = new Set(['KITBRAVOI AL'])
+const catalogueProducts = [...products.filter((product) => !legacyProductSkus.has(product.sku)), ...mercuryCatalogue]
 const categories = ['All','Volvo Penta','Mercury / MerCruiser','Sleipner']
 const applications = ['All', ...Array.from(new Set(catalogueProducts.map((p) => p.kind))).sort()]
 
@@ -38,6 +40,29 @@ function containingKits(product) {
 
 function priceLabel(product) {
   return hasPrice(product) ? money(retailPriceIncVat(product.tradeExVat)) : 'Price pending'
+}
+
+function searchScore(product, q) {
+  if (!q) {
+    return (product.kind === 'Engine anode kit' ? 20 : 0) + (hasPrice(product) ? 10 : 0)
+  }
+
+  const sku = product.sku.toLowerCase()
+  const catalogueSku = (product.catalogueSku || '').toLowerCase()
+  const oem = (product.oem || []).map((value) => String(value).toLowerCase())
+  const aliases = (product.aliases || []).map((value) => String(value).toLowerCase())
+  const equipment = (product.equipment || []).map((value) => String(value).toLowerCase())
+
+  let score = 0
+  if (sku === q || catalogueSku === q || oem.includes(q)) score += 1000
+  else if (sku.startsWith(q) || catalogueSku.startsWith(q) || oem.some((value) => value.startsWith(q))) score += 700
+  if (equipment.includes(q)) score += 500
+  if (aliases.includes(q)) score += 450
+  if (equipment.some((value) => value.includes(q))) score += 300
+  if (aliases.some((value) => value.includes(q))) score += 250
+  if (product.kind === 'Engine anode kit') score += 35
+  if (hasPrice(product)) score += 20
+  return score
 }
 
 export default function App() {
@@ -81,6 +106,10 @@ export default function App() {
         ...kitSkus,
       ].join(' ').toLowerCase()
       return haystack.includes(q)
+    }).sort((a, b) => {
+      const scoreDifference = searchScore(b, q) - searchScore(a, q)
+      if (scoreDifference) return scoreDifference
+      return a.sku.localeCompare(b.sku, undefined, { numeric:true })
     })
   }, [query, category, equipment, application, water])
 
@@ -92,6 +121,11 @@ export default function App() {
     if (!hasPrice(product)) return
     setBasket((items) => [...items, product])
     setSelected(null)
+  }
+
+  function quickAdd(product) {
+    if (!hasPrice(product)) return
+    setBasket((items) => [...items, product])
   }
 
   function removeFromBasket(index) {
@@ -159,8 +193,8 @@ export default function App() {
             <label><span>Operating water</span><select value={water} onChange={(e) => setWater(e.target.value)}><option>Any</option><option>Salt</option><option>Brackish</option><option>Fresh</option></select></label>
             <button className="reset" onClick={resetFinder}>Reset finder</button>
           </div>
-          {category !== 'All' && equipment !== 'All' && <div className="finder-confirmation">Showing verified demo records associated with <strong>{category} {equipment}</strong>. Both priced trade-list records and verified catalogue-only compatibility records can appear.</div>}
-          {water === 'Fresh' && <div className="finder-warning">Fresh-water filtering only returns magnesium records. Where a current trade price has not yet been reconciled, the part remains visible as catalogue-only rather than receiving an invented price.</div>}
+          {category !== 'All' && equipment !== 'All' && <div className="finder-confirmation">Showing verified demo records associated with <strong>{category} {equipment}</strong>. Priced, purchasable records are prioritised; catalogue-only matches remain visible when commercial data is still missing.</div>}
+          {water === 'Fresh' && <div className="finder-warning">Fresh-water filtering only returns magnesium records. Where a trade price has not been reconciled, the part remains visible as catalogue-only rather than receiving an invented price.</div>}
         </section>
 
         <MyBoat products={catalogueProducts} onViewProduct={setSelected} onAddProduct={addToBasket} />
@@ -184,7 +218,7 @@ export default function App() {
                   {product.oem.length > 0 && <div className="oem">OEM ref: {product.oem.join(' / ')}</div>}
                   {kitCount > 0 && <div className="kit-badge">Complete kit available</div>}
                   {product.catalogueOnly && <div className="catalogue-badge">Verified compatibility · price not loaded</div>}
-                  <div className="price-row"><div><strong>{priceLabel(product)}</strong><span>{hasPrice(product) ? ' inc VAT' : ' catalogue record'}</span></div><button onClick={() => setSelected(product)}>View</button></div>
+                  <div className="price-row"><div><strong>{priceLabel(product)}</strong><span>{hasPrice(product) ? ' inc VAT' : ' catalogue record'}</span></div><div className="card-actions"><button onClick={() => setSelected(product)}>View</button>{hasPrice(product) && <button className="buy-now" onClick={() => quickAdd(product)}>Add</button>}</div></div>
                 </article>
               )
             })}
