@@ -4,6 +4,7 @@ import { mercuryCatalogue } from './data/mercuryCatalogue.js'
 import { buildSupplierEmail } from './data/supplierEmail.js'
 import MyBoat from './MyBoat.jsx'
 import SupplierEmailPanel from './SupplierEmailPanel.jsx'
+import ProductArt from './ProductArt.jsx'
 
 // Remove legacy demo records that have been replaced by canonical catalogue SKUs.
 const legacyProductSkus = new Set(['KITBRAVOI AL'])
@@ -300,7 +301,7 @@ export default function App() {
               const kitCount = containingKits(product).length
               return (
                 <article className="product-card" key={product.sku}>
-                  <div className="product-art"><span>{product.kind === 'Engine anode kit' ? 'KIT' : product.material.slice(0,2).toUpperCase()}</span></div>
+                  <ProductArt product={product} />
                   <div className="product-meta">{product.applicationBrand} · {product.material}</div>
                   <h3>{product.use}</h3>
                   <div className="sku">Tecnoseal {product.sku}</div>
@@ -332,7 +333,7 @@ export default function App() {
         <div className="overlay" onClick={() => setSelected(null)}>
           <div className="modal product-modal" onClick={(e) => e.stopPropagation()}>
             <button className="close" onClick={() => setSelected(null)}>×</button>
-            <div className="detail-art"><span>{selected.kind === 'Engine anode kit' ? 'KIT' : selected.material.slice(0,2).toUpperCase()}</span></div>
+            <ProductArt product={selected} detail />
             <div className="eyebrow">{selected.applicationBrand} · {selected.material}</div>
             <h2>{selected.use}</h2>
             <div className="detail-code">Tecnoseal {selected.sku}</div>
