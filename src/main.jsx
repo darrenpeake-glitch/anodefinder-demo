@@ -6,6 +6,7 @@ import './styles.css'
 import './sprint01.css'
 import './catalogue-status.css'
 import './myboat.css'
+import './order-simulation.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
