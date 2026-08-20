@@ -43,6 +43,7 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
   const [drive, setDrive] = useState(() => loadBoat()?.drive || '')
   const [thruster, setThruster] = useState(() => loadBoat()?.thruster || '')
   const [water, setWater] = useState(() => loadBoat()?.water || 'Salt')
+  const [addedAll, setAddedAll] = useState(false)
 
   const driveBrands = useMemo(() =>
     [...new Set(products.filter((p) => p.applicationBrand !== 'Sleipner').map((p) => p.applicationBrand))].sort(),
@@ -62,19 +63,40 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
     if (drive && !driveOptions.includes(drive)) setDrive('')
   }, [driveBrand, drive, driveOptions])
 
-  const recommendations = useMemo(() => {
+  const recommendationGroups = useMemo(() => {
     if (!savedBoat) return []
-    const driveProducts = bestEquipmentProducts(products, savedBoat.driveBrand, savedBoat.drive, savedBoat.water)
-    const thrusterProducts = savedBoat.thruster
-      ? bestEquipmentProducts(products, 'Sleipner', savedBoat.thruster, savedBoat.water)
-      : []
+
+    const groups = [
+      {
+        key: 'drive',
+        label: 'Drive',
+        equipment: `${savedBoat.driveBrand} · ${savedBoat.drive}`,
+        products: bestEquipmentProducts(products, savedBoat.driveBrand, savedBoat.drive, savedBoat.water),
+      },
+    ]
+
+    if (savedBoat.thruster) {
+      groups.push({
+        key: 'thruster',
+        label: 'Thruster',
+        equipment: `Sleipner · ${savedBoat.thruster}`,
+        products: bestEquipmentProducts(products, 'Sleipner', savedBoat.thruster, savedBoat.water),
+      })
+    }
+
+    return groups
+  }, [products, savedBoat])
+
+  const recommendations = useMemo(() => {
     const seen = new Set()
-    return [...driveProducts, ...thrusterProducts].filter((product) => {
+    return recommendationGroups.flatMap((group) =>
+      group.products.map((product) => ({ product, system: group.label }))
+    ).filter(({ product }) => {
       if (seen.has(product.sku)) return false
       seen.add(product.sku)
       return true
     })
-  }, [products, savedBoat])
+  }, [recommendationGroups])
 
   function saveBoat() {
     if (!name.trim() || !drive) return
@@ -82,6 +104,7 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(boat))
     setSavedBoat(boat)
     setEditing(false)
+    setAddedAll(false)
   }
 
   function editBoat() {
@@ -93,6 +116,7 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
       setWater(savedBoat.water)
     }
     setEditing(true)
+    setAddedAll(false)
   }
 
   function forgetBoat() {
@@ -103,10 +127,23 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
     setThruster('')
     setWater('Salt')
     setEditing(true)
+    setAddedAll(false)
   }
 
-  const pricedTotal = recommendations.filter(priced).reduce((sum, product) => sum + retailPriceIncVat(product.tradeExVat), 0)
-  const pendingCount = recommendations.filter((product) => !priced(product)).length
+  function addAllPriced() {
+    const purchasable = recommendations.map(({ product }) => product).filter(priced)
+    if (!purchasable.length) return
+    purchasable.forEach((product) => onAddProduct(product))
+    setAddedAll(true)
+  }
+
+  const pricedProducts = recommendations.map(({ product }) => product).filter(priced)
+  const pricedTotal = pricedProducts.reduce((sum, product) => sum + retailPriceIncVat(product.tradeExVat), 0)
+  const pendingCount = recommendations.filter(({ product }) => !priced(product)).length
+  const matchedSystems = recommendationGroups.filter((group) => group.products.length > 0).length
+  const totalSystems = recommendationGroups.length
+  const coverageComplete = totalSystems > 0 && matchedSystems === totalSystems
+  const commercialComplete = recommendations.length > 0 && pendingCount === 0
 
   return (
     <section className="myboat" id="my-boat">
@@ -137,9 +174,16 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
             <div><span>Water</span><strong>{savedBoat.water}</strong></div>
           </div>
 
+          <div className="coverage-grid">
+            <div className={coverageComplete ? 'coverage-ok' : 'coverage-warn'}><span>Compatibility coverage</span><strong>{matchedSystems}/{totalSystems} systems matched</strong><small>{coverageComplete ? 'Verified catalogue records found for every saved system.' : 'At least one saved system still needs catalogue mapping.'}</small></div>
+            <div className={commercialComplete ? 'coverage-ok' : 'coverage-warn'}><span>Commercial coverage</span><strong>{commercialComplete ? 'Ready to price' : `${pendingCount} price${pendingCount === 1 ? '' : 's'} pending`}</strong><small>{commercialComplete ? 'Every shortlisted item has a trade cost loaded.' : 'Compatibility is retained even where supplier pricing is not yet loaded.'}</small></div>
+          </div>
+
           <div className="annual-head"><div><strong>Annual anode shortlist</strong><span>Compatibility matches from the verified demo catalogue.</span></div>{recommendations.length > 0 && <div><strong>{pricedTotal > 0 ? money(pricedTotal) : '—'}</strong><span>{pendingCount ? `${pendingCount} price${pendingCount === 1 ? '' : 's'} pending` : 'priced items inc VAT'}</span></div>}</div>
 
-          {recommendations.length > 0 ? <div className="annual-list">{recommendations.map((product) => <article key={product.sku}><div><span className="annual-system">{product.applicationBrand === 'Sleipner' ? 'Thruster' : 'Drive'}</span><strong>{product.use}</strong><span>Tecnoseal {product.sku} · {product.material}</span></div><div className="annual-price"><strong>{priced(product) ? money(retailPriceIncVat(product.tradeExVat)) : 'Price pending'}</strong><button onClick={() => onViewProduct(product)}>View</button>{priced(product) && <button className="add-small" onClick={() => onAddProduct(product)}>Add</button>}</div></article>)}</div> : <div className="boat-empty">No verified {savedBoat.water.toLowerCase()}-water records are currently loaded for this equipment combination. The boat profile is still saved.</div>}
+          {recommendations.length > 0 ? <div className="annual-list">{recommendations.map(({ product, system }) => <article key={product.sku}><div><span className="annual-system">{system}</span><strong>{product.use}</strong><span>Tecnoseal {product.sku} · {product.material}</span></div><div className="annual-price"><strong>{priced(product) ? money(retailPriceIncVat(product.tradeExVat)) : 'Price pending'}</strong><button onClick={() => onViewProduct(product)}>View</button>{priced(product) && <button className="add-small" onClick={() => onAddProduct(product)}>Add</button>}</div></article>)}</div> : <div className="boat-empty">No verified {savedBoat.water.toLowerCase()}-water records are currently loaded for this equipment combination. The boat profile is still saved.</div>}
+
+          {pricedProducts.length > 0 && <div className="annual-bulk"><div><strong>{pricedProducts.length} purchasable item{pricedProducts.length === 1 ? '' : 's'}</strong><span>{pendingCount ? `You can add the priced part of this shortlist now; ${pendingCount} record${pendingCount === 1 ? '' : 's'} remain price-pending.` : 'All shortlisted items have pricing loaded.'}</span></div><button className="primary" onClick={addAllPriced}>{addedAll ? 'Added to basket ✓' : `Add all priced · ${money(pricedTotal)}`}</button></div>}
 
           <div className="annual-disclaimer">This is a compatibility shortlist, not yet a guaranteed complete service schedule. Production My Boat will only call a set “complete” when every fitted system and required quantity has been explicitly mapped.</div>
         </>
