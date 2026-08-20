@@ -21,6 +21,14 @@ function matchesWater(product, water) {
   return true
 }
 
+function containingKits(product) {
+  if (!product || product.kind === 'Engine anode kit') return []
+  return products.filter((candidate) =>
+    candidate.kind === 'Engine anode kit' &&
+    (candidate.kitContents || []).some((item) => item.sku === product.sku)
+  )
+}
+
 export default function App() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('All')
@@ -66,6 +74,7 @@ export default function App() {
   }, [query, category, equipment, application, water])
 
   const related = selected ? products.filter((p) => p.sku !== selected.sku && p.oem.some((ref) => selected.oem.includes(ref))) : []
+  const kitsForSelected = containingKits(selected)
   const basketTotal = basket.reduce((sum, item) => sum + retailPriceIncVat(item.tradeExVat), 0)
 
   function addToBasket(product) {
@@ -111,7 +120,7 @@ export default function App() {
           <h1>Find the right anode for your boat.</h1>
           <p>Know a part number, drive model or manufacturer? Search everything from one box.</p>
           <div className="searchbox">
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Try 838929, DPH, 00714AL, KITVOLVODPH, Volvo Penta..." />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Try 838929, DPH, DP280, 00714MG, KITVOLVODPH..." />
           </div>
           <div className="quicklinks">
             {categories.map((item) => <button key={item} className={category === item ? 'active' : ''} onClick={() => chooseCategory(item)}>{item}</button>)}
@@ -137,8 +146,8 @@ export default function App() {
             <label><span>Operating water</span><select value={water} onChange={(e) => setWater(e.target.value)}><option>Any</option><option>Salt</option><option>Brackish</option><option>Fresh</option></select></label>
             <button className="reset" onClick={resetFinder}>Reset finder</button>
           </div>
-          {category === 'Volvo Penta' && equipment !== 'All' && <div className="finder-confirmation">Showing verified demo records associated with <strong>Volvo Penta {equipment}</strong>. This is now equipment-level catalogue data rather than a generic keyword filter.</div>}
-          {water === 'Fresh' && <div className="finder-warning">The current verified Volvo subset does not yet include individually priced magnesium components. Magnesium drive kits will be added as we reconcile the remaining catalogue and price-list records.</div>}
+          {category === 'Volvo Penta' && equipment !== 'All' && <div className="finder-confirmation">Showing verified demo records associated with <strong>Volvo Penta {equipment}</strong>. This is equipment-level catalogue data rather than a generic keyword filter.</div>}
+          {water === 'Fresh' && <div className="finder-warning">Fresh-water filtering now exposes verified magnesium drive kits where the trade list and 2026 catalogue agree. Some individual magnesium kit components remain catalogue-only until separately priced.</div>}
         </section>
 
         <section className="catalogue">
@@ -148,17 +157,21 @@ export default function App() {
           </div>
 
           <div className="product-grid">
-            {filtered.map((product) => (
-              <article className="product-card" key={product.sku}>
-                <div className="product-art"><span>{product.kind === 'Engine anode kit' ? 'KIT' : product.material.slice(0,2).toUpperCase()}</span></div>
-                <div className="product-meta">{product.applicationBrand} · {product.material}</div>
-                <h3>{product.use}</h3>
-                <div className="sku">Tecnoseal {product.sku}</div>
-                {product.equipment?.length > 0 && <div className="equipment-line">Fits demo equipment: {product.equipment.join(' · ')}</div>}
-                {product.oem.length > 0 && <div className="oem">OEM ref: {product.oem.join(' / ')}</div>}
-                <div className="price-row"><div><strong>{money(retailPriceIncVat(product.tradeExVat))}</strong><span> inc VAT</span></div><button onClick={() => setSelected(product)}>View</button></div>
-              </article>
-            ))}
+            {filtered.map((product) => {
+              const kitCount = containingKits(product).length
+              return (
+                <article className="product-card" key={product.sku}>
+                  <div className="product-art"><span>{product.kind === 'Engine anode kit' ? 'KIT' : product.material.slice(0,2).toUpperCase()}</span></div>
+                  <div className="product-meta">{product.applicationBrand} · {product.material}</div>
+                  <h3>{product.use}</h3>
+                  <div className="sku">Tecnoseal {product.sku}</div>
+                  {product.equipment?.length > 0 && <div className="equipment-line">Fits demo equipment: {product.equipment.join(' · ')}</div>}
+                  {product.oem.length > 0 && <div className="oem">OEM ref: {product.oem.join(' / ')}</div>}
+                  {kitCount > 0 && <div className="kit-badge">Complete kit available</div>}
+                  <div className="price-row"><div><strong>{money(retailPriceIncVat(product.tradeExVat))}</strong><span> inc VAT</span></div><button onClick={() => setSelected(product)}>View</button></div>
+                </article>
+              )
+            })}
           </div>
           {filtered.length === 0 && <div className="empty">No verified demo products match those selections yet. Try resetting the finder or use the global search above.</div>}
         </section>
@@ -194,6 +207,7 @@ export default function App() {
               <div><dt>Retail inc VAT</dt><dd>{money(retailPriceIncVat(selected.tradeExVat))}</dd></div>
             </dl>
             {selected.kitContents?.length > 0 && <div className="kit-contents"><strong>Kit contents</strong>{selected.kitContents.map((item) => <div key={item.sku}><span>{item.qty} × Tecnoseal {item.sku}</span><button onClick={() => { const component = products.find((p) => p.sku === item.sku); if (component) setSelected(component) }}>{products.some((p) => p.sku === item.sku) ? 'View component' : 'Catalogue component'}</button></div>)}</div>}
+            {kitsForSelected.length > 0 && <div className="kit-options"><strong>Prefer the complete kit?</strong><span>This individual anode is included in the following verified kit{kitsForSelected.length > 1 ? 's' : ''}:</span>{kitsForSelected.map((kit) => <button key={kit.sku} onClick={() => setSelected(kit)}><span>{kit.use} · {kit.material}</span><strong>{money(retailPriceIncVat(kit.tradeExVat))}</strong></button>)}</div>}
             <div className="material-note"><strong>Material guidance</strong><span>{materialGuidance(selected.material)}</span></div>
             {related.length > 0 && <div className="related"><strong>Same OEM reference</strong>{related.map((item) => <button key={item.sku} onClick={() => setSelected(item)}>{item.sku} · {item.material} · {money(retailPriceIncVat(item.tradeExVat))}</button>)}</div>}
             <div className="verification">Compatibility and dimensions must be verified against current technical data before commercial launch.</div>
