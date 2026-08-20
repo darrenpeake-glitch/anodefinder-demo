@@ -8,6 +8,7 @@ const legacyProductSkus = new Set(['KITBRAVOI AL'])
 const catalogueProducts = [...products.filter((product) => !legacyProductSkus.has(product.sku)), ...mercuryCatalogue]
 const categories = ['All','Volvo Penta','Mercury / MerCruiser','Sleipner']
 const applications = ['All', ...Array.from(new Set(catalogueProducts.map((p) => p.kind))).sort()]
+const emptyCustomer = { name:'', email:'', address:'', town:'', postcode:'' }
 
 function hasPrice(product) {
   return Number.isFinite(product?.tradeExVat)
@@ -74,6 +75,7 @@ export default function App() {
   const [selected, setSelected] = useState(null)
   const [basket, setBasket] = useState([])
   const [checkout, setCheckout] = useState(false)
+  const [checkoutCustomer, setCheckoutCustomer] = useState(emptyCustomer)
   const [demoOrder, setDemoOrder] = useState(null)
 
   const equipmentOptions = useMemo(() => {
@@ -125,6 +127,7 @@ export default function App() {
     return [...lines.values()]
   }, [basket])
   const basketTotal = basket.reduce((sum, item) => sum + retailPriceIncVat(item.tradeExVat), 0)
+  const checkoutReady = basket.length > 0 && Object.values(checkoutCustomer).every((value) => value.trim())
 
   function addToBasket(product) {
     if (!hasPrice(product)) return
@@ -149,6 +152,10 @@ export default function App() {
     setBasket((items) => items.filter((item) => item.sku !== sku))
   }
 
+  function updateCheckoutCustomer(field, value) {
+    setCheckoutCustomer((customer) => ({ ...customer, [field]:value }))
+  }
+
   function chooseCategory(value) {
     setCategory(value)
     setEquipment('All')
@@ -163,10 +170,55 @@ export default function App() {
   }
 
   function placeDemoOrder() {
-    const orderNo = `DEMO-${String(Math.floor(Math.random() * 90000) + 10000)}`
-    setDemoOrder(orderNo)
+    if (!checkoutReady) return
+
+    const numericId = String(Math.floor(Math.random() * 90000) + 10000)
+    const orderNo = `ORD-${numericId}`
+    const poNumber = `PO-${numericId}-TSE`
+    const orderLines = basketLines.map(({ product, qty }) => ({
+      sku: product.sku,
+      description: product.use,
+      material: product.material,
+      qty,
+      unitRetailIncVat: retailPriceIncVat(product.tradeExVat),
+      lineTotalIncVat: retailPriceIncVat(product.tradeExVat) * qty,
+    }))
+
+    const customerOrder = {
+      orderNo,
+      status: 'PAID',
+      createdAt: new Date().toISOString(),
+      customer: { ...checkoutCustomer },
+      lines: orderLines,
+      productsTotalIncVat: basketTotal,
+      delivery: {
+        method: 'SUPPLIER_DIRECT',
+        chargeStatus: 'PENDING_LIVE_QUOTE',
+      },
+      currentTotalIncVat: basketTotal,
+    }
+
+    const supplierOrder = {
+      poNumber,
+      supplierCode: 'TSE',
+      supplierName: 'Tecnoseal UK',
+      status: 'READY_TO_SEND',
+      customerOrderNo: orderNo,
+      fulfilment: 'DIRECT_TO_CUSTOMER',
+      shipTo: {
+        name: checkoutCustomer.name,
+        address: checkoutCustomer.address,
+        town: checkoutCustomer.town,
+        postcode: checkoutCustomer.postcode,
+      },
+      lines: orderLines.map(({ sku, qty }) => ({ sku, qty })),
+      commercialPricing: 'INTERNAL_ONLY_NOT_EXPOSED_IN_DEMO',
+    }
+
+    setDemoOrder({ customerOrder, supplierOrder })
     setBasket([])
     setCheckout(false)
+    setCheckoutCustomer(emptyCustomer)
   }
 
   return (
@@ -301,11 +353,11 @@ export default function App() {
                 <div className="delivery-panel"><strong>Supplier-direct delivery</strong><span>Production checkout will calculate carriage from the supplier's live terms and delivery postcode. The demo does not invent a delivery charge.</span></div>
 
                 <div className="checkout-grid checkout-address">
-                  <label><span>Name</span><input placeholder="Demo customer" /></label>
-                  <label><span>Email</span><input type="email" placeholder="customer@example.com" /></label>
-                  <label className="address-wide"><span>Address</span><input placeholder="1 Marina Road" /></label>
-                  <label><span>Town / city</span><input placeholder="Plymouth" /></label>
-                  <label><span>Postcode</span><input placeholder="PL1 2AB" /></label>
+                  <label><span>Name</span><input value={checkoutCustomer.name} onChange={(e) => updateCheckoutCustomer('name', e.target.value)} placeholder="Demo customer" /></label>
+                  <label><span>Email</span><input value={checkoutCustomer.email} onChange={(e) => updateCheckoutCustomer('email', e.target.value)} type="email" placeholder="customer@example.com" /></label>
+                  <label className="address-wide"><span>Address</span><input value={checkoutCustomer.address} onChange={(e) => updateCheckoutCustomer('address', e.target.value)} placeholder="1 Marina Road" /></label>
+                  <label><span>Town / city</span><input value={checkoutCustomer.town} onChange={(e) => updateCheckoutCustomer('town', e.target.value)} placeholder="Plymouth" /></label>
+                  <label><span>Postcode</span><input value={checkoutCustomer.postcode} onChange={(e) => updateCheckoutCustomer('postcode', e.target.value)} placeholder="PL1 2AB" /></label>
                 </div>
               </div>
 
@@ -315,15 +367,60 @@ export default function App() {
                 <div><span>Delivery</span><strong>Calculated live</strong></div>
                 <div className="order-total"><span>Current demo total</span><strong>{money(basketTotal)}</strong></div>
                 <small>Delivery is excluded until live supplier carriage rules are connected.</small>
-                <div className="demo-address">Demo only — no payment or customer data is transmitted. A production order will create the customer order, payment record and supplier PO.</div>
-                <button className="primary" onClick={placeDemoOrder}>Place demo order</button>
+                <div className="demo-address">Demo only — payment is simulated and no customer data is transmitted. Placing the order creates both sides of the transaction locally in this page.</div>
+                <button className="primary" disabled={!checkoutReady} onClick={placeDemoOrder}>Simulate payment & place order</button>
+                {!checkoutReady && <small className="checkout-required">Complete all delivery fields to create the demo transaction.</small>}
               </aside>
             </div>}
           </div>
         </div>
       )}
 
-      {demoOrder && <div className="toast" onClick={() => setDemoOrder(null)}><strong>{demoOrder} created</strong><span>Supplier PO would now be generated and routed for direct fulfilment.</span></div>}
+      {demoOrder && (
+        <div className="overlay" onClick={() => setDemoOrder(null)}>
+          <div className="modal transaction-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="close" onClick={() => setDemoOrder(null)}>×</button>
+            <div className="transaction-success"><span>✓</span><div><div className="eyebrow">Demo transaction created</div><h2>{demoOrder.customerOrder.orderNo}</h2><p>Payment has been simulated and the corresponding supplier PO is ready to route.</p></div></div>
+
+            <div className="transaction-flow">
+              <div className="complete"><span>1</span><strong>PAID</strong><small>Customer order</small></div>
+              <div className="complete"><span>2</span><strong>READY</strong><small>Supplier PO</small></div>
+              <div><span>3</span><strong>NEXT</strong><small>Send to supplier</small></div>
+            </div>
+
+            <div className="transaction-columns">
+              <section>
+                <div className="transaction-heading"><span>Customer order</span><strong>{demoOrder.customerOrder.orderNo}</strong></div>
+                <dl>
+                  <div><dt>Status</dt><dd>{demoOrder.customerOrder.status}</dd></div>
+                  <div><dt>Customer</dt><dd>{demoOrder.customerOrder.customer.name}</dd></div>
+                  <div><dt>Email</dt><dd>{demoOrder.customerOrder.customer.email}</dd></div>
+                  <div><dt>Ship to</dt><dd>{demoOrder.customerOrder.customer.address}, {demoOrder.customerOrder.customer.town}, {demoOrder.customerOrder.customer.postcode}</dd></div>
+                  <div><dt>Products inc VAT</dt><dd>{money(demoOrder.customerOrder.productsTotalIncVat)}</dd></div>
+                  <div><dt>Delivery</dt><dd>Pending live quote</dd></div>
+                </dl>
+                <div className="transaction-lines">{demoOrder.customerOrder.lines.map((line) => <div key={line.sku}><span>{line.qty} × {line.sku}<small>{line.description} · {line.material}</small></span><strong>{money(line.lineTotalIncVat)}</strong></div>)}</div>
+              </section>
+
+              <section className="supplier-payload">
+                <div className="transaction-heading"><span>Supplier routing payload</span><strong>{demoOrder.supplierOrder.poNumber}</strong></div>
+                <dl>
+                  <div><dt>Supplier</dt><dd>{demoOrder.supplierOrder.supplierName}</dd></div>
+                  <div><dt>Status</dt><dd>{demoOrder.supplierOrder.status}</dd></div>
+                  <div><dt>Fulfilment</dt><dd>Direct to customer</dd></div>
+                  <div><dt>Customer ref</dt><dd>{demoOrder.supplierOrder.customerOrderNo}</dd></div>
+                  <div><dt>Postcode</dt><dd>{demoOrder.supplierOrder.shipTo.postcode}</dd></div>
+                </dl>
+                <div className="supplier-lines"><strong>PO lines</strong>{demoOrder.supplierOrder.lines.map((line) => <div key={line.sku}><span>Tecnoseal {line.sku}</span><strong>Qty {line.qty}</strong></div>)}</div>
+                <div className="internal-note">Supplier trade pricing is deliberately not exposed in this public demo. Production PO creation would attach the commercial terms server-side.</div>
+              </section>
+            </div>
+
+            <div className="transaction-next"><strong>Next production integration</strong><span>POST the supplier payload through Tecnoseal's agreed order channel, wait for acknowledgement, then attach dispatch/tracking to {demoOrder.customerOrder.orderNo}.</span></div>
+            <button className="primary" onClick={() => setDemoOrder(null)}>Done</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
