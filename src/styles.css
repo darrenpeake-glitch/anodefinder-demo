@@ -31,11 +31,14 @@ main { max-width:1180px; margin:0 auto; padding:0 22px 70px; }
 .finder h2 { margin:6px 0 10px; font-size:clamp(1.6rem,3vw,2.3rem); letter-spacing:-.03em; }
 .finder p { margin:0; color:#64748b; line-height:1.55; }
 .finder-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; align-items:end; }
+.finder-controls-four { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .finder-controls label,.checkout-grid label { display:flex; flex-direction:column; gap:7px; font-size:.78rem; font-weight:800; color:#475569; }
 .finder-controls select,.checkout-grid input { width:100%; border:1px solid #cbd5e1; background:#fff; color:#0f172a; padding:12px 13px; border-radius:12px; outline:none; }
 .finder-controls select:focus,.checkout-grid input:focus { border-color:#0ea5e9; box-shadow:0 0 0 3px rgba(14,165,233,.12); }
 .reset { grid-column:1/-1; justify-self:start; border:0; background:transparent; color:#0284c7; font-weight:800; padding:2px 0; }
-.finder-warning { grid-column:1/-1; padding:12px 14px; border-radius:12px; background:#fff7ed; color:#9a3412; font-size:.84rem; }
+.finder-warning,.finder-confirmation { grid-column:1/-1; padding:12px 14px; border-radius:12px; font-size:.84rem; }
+.finder-warning { background:#fff7ed; color:#9a3412; }
+.finder-confirmation { background:#f0f9ff; color:#0c4a6e; }
 .catalogue { margin-top:30px; }
 .section-head { display:flex; align-items:end; justify-content:space-between; gap:20px; margin-bottom:18px; }
 .section-head h2,.workflow h2 { margin:5px 0 0; font-size:clamp(1.8rem,4vw,2.7rem); letter-spacing:-.03em; }
@@ -51,8 +54,9 @@ main { max-width:1180px; margin:0 auto; padding:0 22px 70px; }
 .detail-art span { width:82px; height:82px; font-size:1.3rem; }
 .product-meta { color:#0ea5e9; font-size:.74rem; font-weight:800; text-transform:uppercase; letter-spacing:.07em; }
 .product-card h3 { margin:7px 0 6px; font-size:1.15rem; }
-.sku,.oem { color:#64748b; font-size:.9rem; }
-.oem { margin-top:3px; }
+.sku,.oem,.equipment-line { color:#64748b; font-size:.9rem; }
+.oem,.equipment-line { margin-top:3px; }
+.kit-badge { align-self:flex-start; margin-top:10px; padding:6px 9px; border-radius:999px; background:#ecfdf5; color:#047857; font-size:.72rem; font-weight:800; }
 .price-row { display:flex; align-items:end; justify-content:space-between; gap:10px; margin-top:auto; padding-top:18px; }
 .price-row div { display:flex; flex-direction:column; }
 .price-row strong { font-size:1.35rem; }
@@ -75,9 +79,16 @@ dl { margin:0; }
 dl div { display:flex; justify-content:space-between; gap:14px; padding:11px 0; border-bottom:1px solid #e2e8f0; }
 dt { color:#64748b; } dd { margin:0; font-weight:700; text-align:right; }
 .material-note { display:flex; flex-direction:column; gap:5px; margin:18px 0 0; padding:14px; border-radius:12px; background:#f0f9ff; color:#0c4a6e; font-size:.84rem; line-height:1.45; }
-.related { display:flex; flex-direction:column; gap:8px; margin-top:18px; }
-.related > strong { font-size:.84rem; color:#475569; }
+.related,.kit-contents,.kit-options { display:flex; flex-direction:column; gap:8px; margin-top:18px; }
+.related > strong,.kit-contents > strong,.kit-options > strong { font-size:.84rem; color:#475569; }
 .related button { text-align:left; border:1px solid #dbe3ec; background:#f8fafc; padding:10px 12px; border-radius:10px; color:#0f172a; font-weight:700; }
+.kit-contents div { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid #e2e8f0; font-size:.86rem; }
+.kit-contents button { border:0; background:transparent; color:#0284c7; font-weight:800; font-size:.78rem; }
+.kit-options { padding:14px; border-radius:14px; background:#ecfdf5; color:#065f46; }
+.kit-options > span { font-size:.82rem; line-height:1.4; }
+.kit-options button { display:flex; justify-content:space-between; gap:12px; align-items:center; text-align:left; border:1px solid #a7f3d0; background:#fff; color:#064e3b; padding:11px 12px; border-radius:11px; }
+.kit-options button span { font-weight:700; }
+.kit-options button strong { white-space:nowrap; }
 .verification,.demo-address { margin:18px 0; padding:13px; border-radius:12px; background:#fff7ed; color:#9a3412; font-size:.84rem; }
 .primary { width:100%; padding:14px 18px; }
 .basket-lines { display:flex; flex-direction:column; gap:4px; margin-top:18px; }
