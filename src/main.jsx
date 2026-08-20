@@ -1,5 +1,6 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
+import './data/catalogueBootstrap.js'
 import App from './App.jsx'
 import './styles.css'
 import './sprint01.css'
