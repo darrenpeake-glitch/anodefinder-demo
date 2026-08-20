@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { products, retailPriceExVat, retailPriceIncVat, money, TARGET_MARGIN, FLOOR_MARGIN } from './data/products.js'
 import { mercuryCatalogue } from './data/mercuryCatalogue.js'
+import { buildSupplierEmail } from './data/supplierEmail.js'
 import MyBoat from './MyBoat.jsx'
+import SupplierEmailPanel from './SupplierEmailPanel.jsx'
 
 // Remove legacy demo records that have been replaced by canonical catalogue SKUs.
 const legacyProductSkus = new Set(['KITBRAVOI AL'])
@@ -193,7 +195,7 @@ export default function App() {
       productsTotalIncVat: basketTotal,
       delivery: {
         method: 'SUPPLIER_DIRECT',
-        chargeStatus: 'PENDING_LIVE_QUOTE',
+        chargeStatus: 'PENDING_SUPPLIER_CONFIRMATION',
       },
       currentTotalIncVat: basketTotal,
     }
@@ -202,7 +204,7 @@ export default function App() {
       poNumber,
       supplierCode: 'TSE',
       supplierName: 'Tecnoseal UK',
-      status: 'READY_TO_SEND',
+      status: 'PO_EMAIL_READY',
       customerOrderNo: orderNo,
       fulfilment: 'DIRECT_TO_CUSTOMER',
       shipTo: {
@@ -215,10 +217,29 @@ export default function App() {
       commercialPricing: 'INTERNAL_ONLY_NOT_EXPOSED_IN_DEMO',
     }
 
+    supplierOrder.email = buildSupplierEmail(supplierOrder)
     setDemoOrder({ customerOrder, supplierOrder })
     setBasket([])
     setCheckout(false)
     setCheckoutCustomer(emptyCustomer)
+  }
+
+  function markSupplierEmailSent() {
+    setDemoOrder((order) => {
+      if (!order) return order
+      return {
+        ...order,
+        supplierOrder: {
+          ...order.supplierOrder,
+          status: 'SENT_TO_SUPPLIER',
+          email: {
+            ...order.supplierOrder.email,
+            status: 'SENT_TO_SUPPLIER',
+            sentAt: new Date().toISOString(),
+          },
+        },
+      }
+    })
   }
 
   return (
@@ -299,9 +320,9 @@ export default function App() {
           <div className="eyebrow">What happens after checkout</div>
           <h2>Automate the normal. Escalate the weird.</h2>
           <div className="flowline">
-            {['Customer order','Payment','Supplier PO','Supplier accepted','Direct dispatch','Tracking','Delivered'].map((step, index) => <div key={step} className="flowstep"><span>{index + 1}</span>{step}</div>)}
+            {['Customer order','Payment','PO email','Supplier accepted','Direct dispatch','Tracking','Delivered'].map((step, index) => <div key={step} className="flowstep"><span>{index + 1}</span>{step}</div>)}
           </div>
-          <p>Production integrations are not active in this demo. The purpose is to prove the customer journey and supplier-routing model.</p>
+          <p>V1 routes paid orders to the supplier by structured email. Supplier acknowledgement, delays and dispatch can initially be handled manually while the business is proven.</p>
         </section>
       </main>
 
@@ -350,7 +371,7 @@ export default function App() {
                   <button className="remove" onClick={() => removeFromBasket(product.sku)}>Remove</button>
                 </div>)}</div>
 
-                <div className="delivery-panel"><strong>Supplier-direct delivery</strong><span>Production checkout will calculate carriage from the supplier's live terms and delivery postcode. The demo does not invent a delivery charge.</span></div>
+                <div className="delivery-panel"><strong>Supplier-direct delivery</strong><span>V1 will submit the paid order to Tecnoseal by structured purchase-order email. Availability and carriage can be confirmed by the supplier during fulfilment.</span></div>
 
                 <div className="checkout-grid checkout-address">
                   <label><span>Name</span><input value={checkoutCustomer.name} onChange={(e) => updateCheckoutCustomer('name', e.target.value)} placeholder="Demo customer" /></label>
@@ -364,11 +385,11 @@ export default function App() {
               <aside className="order-summary">
                 <div className="order-summary-head"><span>Order summary</span><strong>{basket.length} item{basket.length === 1 ? '' : 's'}</strong></div>
                 <div><span>Products inc VAT</span><strong>{money(basketTotal)}</strong></div>
-                <div><span>Delivery</span><strong>Calculated live</strong></div>
+                <div><span>Supplier fulfilment</span><strong>Email PO</strong></div>
                 <div className="order-total"><span>Current demo total</span><strong>{money(basketTotal)}</strong></div>
-                <small>Delivery is excluded until live supplier carriage rules are connected.</small>
-                <div className="demo-address">Demo only — payment is simulated and no customer data is transmitted. Placing the order creates both sides of the transaction locally in this page.</div>
-                <button className="primary" disabled={!checkoutReady} onClick={placeDemoOrder}>Simulate payment & place order</button>
+                <small>Carriage is not invented in the demo; production terms must be agreed before launch.</small>
+                <div className="demo-address">Demo only — payment is simulated and no customer data is transmitted. Placing the order creates the customer transaction and a ready-to-send supplier email locally in this page.</div>
+                <button className="primary" disabled={!checkoutReady} onClick={placeDemoOrder}>Simulate payment & create PO email</button>
                 {!checkoutReady && <small className="checkout-required">Complete all delivery fields to create the demo transaction.</small>}
               </aside>
             </div>}
@@ -380,12 +401,12 @@ export default function App() {
         <div className="overlay" onClick={() => setDemoOrder(null)}>
           <div className="modal transaction-modal" onClick={(e) => e.stopPropagation()}>
             <button className="close" onClick={() => setDemoOrder(null)}>×</button>
-            <div className="transaction-success"><span>✓</span><div><div className="eyebrow">Demo transaction created</div><h2>{demoOrder.customerOrder.orderNo}</h2><p>Payment has been simulated and the corresponding supplier PO is ready to route.</p></div></div>
+            <div className="transaction-success"><span>✓</span><div><div className="eyebrow">Demo transaction created</div><h2>{demoOrder.customerOrder.orderNo}</h2><p>Payment has been simulated and the supplier purchase-order email has been generated.</p></div></div>
 
             <div className="transaction-flow">
               <div className="complete"><span>1</span><strong>PAID</strong><small>Customer order</small></div>
-              <div className="complete"><span>2</span><strong>READY</strong><small>Supplier PO</small></div>
-              <div><span>3</span><strong>NEXT</strong><small>Send to supplier</small></div>
+              <div className="complete"><span>2</span><strong>EMAIL READY</strong><small>Supplier PO</small></div>
+              <div className={demoOrder.supplierOrder.status === 'SENT_TO_SUPPLIER' ? 'complete' : ''}><span>3</span><strong>{demoOrder.supplierOrder.status === 'SENT_TO_SUPPLIER' ? 'SENT' : 'NEXT'}</strong><small>Email supplier</small></div>
             </div>
 
             <div className="transaction-columns">
@@ -397,26 +418,29 @@ export default function App() {
                   <div><dt>Email</dt><dd>{demoOrder.customerOrder.customer.email}</dd></div>
                   <div><dt>Ship to</dt><dd>{demoOrder.customerOrder.customer.address}, {demoOrder.customerOrder.customer.town}, {demoOrder.customerOrder.customer.postcode}</dd></div>
                   <div><dt>Products inc VAT</dt><dd>{money(demoOrder.customerOrder.productsTotalIncVat)}</dd></div>
-                  <div><dt>Delivery</dt><dd>Pending live quote</dd></div>
+                  <div><dt>Delivery</dt><dd>Supplier confirmation</dd></div>
                 </dl>
                 <div className="transaction-lines">{demoOrder.customerOrder.lines.map((line) => <div key={line.sku}><span>{line.qty} × {line.sku}<small>{line.description} · {line.material}</small></span><strong>{money(line.lineTotalIncVat)}</strong></div>)}</div>
               </section>
 
               <section className="supplier-payload">
-                <div className="transaction-heading"><span>Supplier routing payload</span><strong>{demoOrder.supplierOrder.poNumber}</strong></div>
+                <div className="transaction-heading"><span>Supplier PO</span><strong>{demoOrder.supplierOrder.poNumber}</strong></div>
                 <dl>
                   <div><dt>Supplier</dt><dd>{demoOrder.supplierOrder.supplierName}</dd></div>
                   <div><dt>Status</dt><dd>{demoOrder.supplierOrder.status}</dd></div>
+                  <div><dt>Channel</dt><dd>Email</dd></div>
                   <div><dt>Fulfilment</dt><dd>Direct to customer</dd></div>
                   <div><dt>Customer ref</dt><dd>{demoOrder.supplierOrder.customerOrderNo}</dd></div>
                   <div><dt>Postcode</dt><dd>{demoOrder.supplierOrder.shipTo.postcode}</dd></div>
                 </dl>
                 <div className="supplier-lines"><strong>PO lines</strong>{demoOrder.supplierOrder.lines.map((line) => <div key={line.sku}><span>Tecnoseal {line.sku}</span><strong>Qty {line.qty}</strong></div>)}</div>
-                <div className="internal-note">Supplier trade pricing is deliberately not exposed in this public demo. Production PO creation would attach the commercial terms server-side.</div>
+                <div className="internal-note">No retail pricing or payment information is included in the supplier email. Production trade pricing remains server-side/account-side.</div>
               </section>
             </div>
 
-            <div className="transaction-next"><strong>Next production integration</strong><span>POST the supplier payload through Tecnoseal's agreed order channel, wait for acknowledgement, then attach dispatch/tracking to {demoOrder.customerOrder.orderNo}.</span></div>
+            <SupplierEmailPanel supplierOrder={demoOrder.supplierOrder} onMarkSent={markSupplierEmailSent} />
+
+            <div className="transaction-next"><strong>V1 operating model</strong><span>After the PO email is sent, AnodeFinder waits for Tecnoseal acknowledgement. Initially, availability, carriage, delays and tracking can be handled manually and recorded against {demoOrder.customerOrder.orderNo}.</span></div>
             <button className="primary" onClick={() => setDemoOrder(null)}>Done</button>
           </div>
         </div>
