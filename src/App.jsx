@@ -1,8 +1,14 @@
 import { useMemo, useState } from 'react'
 import { products, retailPriceExVat, retailPriceIncVat, money, TARGET_MARGIN, FLOOR_MARGIN } from './data/products.js'
+import { mercuryCatalogue } from './data/mercuryCatalogue.js'
 
+const catalogueProducts = [...products, ...mercuryCatalogue]
 const categories = ['All','Volvo Penta','Mercury / MerCruiser','Sleipner']
-const applications = ['All', ...Array.from(new Set(products.map((p) => p.kind))).sort()]
+const applications = ['All', ...Array.from(new Set(catalogueProducts.map((p) => p.kind))).sort()]
+
+function hasPrice(product) {
+  return Number.isFinite(product?.tradeExVat)
+}
 
 function materialGuidance(material) {
   if (material === 'Zinc') return 'Commonly used in salt water. Confirm material suitability for your vessel and operating water before ordering.'
@@ -23,10 +29,14 @@ function matchesWater(product, water) {
 
 function containingKits(product) {
   if (!product || product.kind === 'Engine anode kit') return []
-  return products.filter((candidate) =>
+  return catalogueProducts.filter((candidate) =>
     candidate.kind === 'Engine anode kit' &&
     (candidate.kitContents || []).some((item) => item.sku === product.sku)
   )
+}
+
+function priceLabel(product) {
+  return hasPrice(product) ? money(retailPriceIncVat(product.tradeExVat)) : 'Price pending'
 }
 
 export default function App() {
@@ -41,13 +51,13 @@ export default function App() {
   const [demoOrder, setDemoOrder] = useState(null)
 
   const equipmentOptions = useMemo(() => {
-    const source = category === 'All' ? products : products.filter((p) => p.applicationBrand === category)
+    const source = category === 'All' ? catalogueProducts : catalogueProducts.filter((p) => p.applicationBrand === category)
     return ['All', ...Array.from(new Set(source.flatMap((p) => p.equipment || []))).sort((a,b) => a.localeCompare(b, undefined, { numeric:true }))]
   }, [category])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return products.filter((p) => {
+    return catalogueProducts.filter((p) => {
       const categoryMatch = category === 'All' || p.applicationBrand === category
       const equipmentMatch = equipment === 'All' || (p.equipment || []).includes(equipment)
       const applicationMatch = application === 'All' || p.kind === application
@@ -73,11 +83,12 @@ export default function App() {
     })
   }, [query, category, equipment, application, water])
 
-  const related = selected ? products.filter((p) => p.sku !== selected.sku && p.oem.some((ref) => selected.oem.includes(ref))) : []
+  const related = selected ? catalogueProducts.filter((p) => p.sku !== selected.sku && p.oem.some((ref) => selected.oem.includes(ref))) : []
   const kitsForSelected = containingKits(selected)
   const basketTotal = basket.reduce((sum, item) => sum + retailPriceIncVat(item.tradeExVat), 0)
 
   function addToBasket(product) {
+    if (!hasPrice(product)) return
     setBasket((items) => [...items, product])
     setSelected(null)
   }
@@ -120,7 +131,7 @@ export default function App() {
           <h1>Find the right anode for your boat.</h1>
           <p>Know a part number, drive model or manufacturer? Search everything from one box.</p>
           <div className="searchbox">
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Try 838929, DPH, DP280, 00714MG, KITVOLVODPH..." />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Try 838929, DPH, Alpha One, 821630, 00820AL..." />
           </div>
           <div className="quicklinks">
             {categories.map((item) => <button key={item} className={category === item ? 'active' : ''} onClick={() => chooseCategory(item)}>{item}</button>)}
@@ -146,14 +157,14 @@ export default function App() {
             <label><span>Operating water</span><select value={water} onChange={(e) => setWater(e.target.value)}><option>Any</option><option>Salt</option><option>Brackish</option><option>Fresh</option></select></label>
             <button className="reset" onClick={resetFinder}>Reset finder</button>
           </div>
-          {category === 'Volvo Penta' && equipment !== 'All' && <div className="finder-confirmation">Showing verified demo records associated with <strong>Volvo Penta {equipment}</strong>. This is equipment-level catalogue data rather than a generic keyword filter.</div>}
-          {water === 'Fresh' && <div className="finder-warning">Fresh-water filtering now exposes verified magnesium drive kits where the trade list and 2026 catalogue agree. Some individual magnesium kit components remain catalogue-only until separately priced.</div>}
+          {category !== 'All' && equipment !== 'All' && <div className="finder-confirmation">Showing verified demo records associated with <strong>{category} {equipment}</strong>. Both priced trade-list records and verified catalogue-only compatibility records can appear.</div>}
+          {water === 'Fresh' && <div className="finder-warning">Fresh-water filtering only returns magnesium records. Where a current trade price has not yet been reconciled, the part remains visible as catalogue-only rather than receiving an invented price.</div>}
         </section>
 
         <section className="catalogue">
           <div className="section-head">
             <div><div className="eyebrow">Verified demo catalogue</div><h2>{filtered.length} matching products</h2></div>
-            <div className="pricing-note">Demo pricing: {Math.round(TARGET_MARGIN * 100)}% target margin · {Math.round(FLOOR_MARGIN * 100)}% policy floor</div>
+            <div className="pricing-note">Priced records: {Math.round(TARGET_MARGIN * 100)}% target margin · {Math.round(FLOOR_MARGIN * 100)}% policy floor</div>
           </div>
 
           <div className="product-grid">
@@ -168,7 +179,8 @@ export default function App() {
                   {product.equipment?.length > 0 && <div className="equipment-line">Fits demo equipment: {product.equipment.join(' · ')}</div>}
                   {product.oem.length > 0 && <div className="oem">OEM ref: {product.oem.join(' / ')}</div>}
                   {kitCount > 0 && <div className="kit-badge">Complete kit available</div>}
-                  <div className="price-row"><div><strong>{money(retailPriceIncVat(product.tradeExVat))}</strong><span> inc VAT</span></div><button onClick={() => setSelected(product)}>View</button></div>
+                  {product.catalogueOnly && <div className="catalogue-badge">Verified compatibility · price not loaded</div>}
+                  <div className="price-row"><div><strong>{priceLabel(product)}</strong><span>{hasPrice(product) ? ' inc VAT' : ' catalogue record'}</span></div><button onClick={() => setSelected(product)}>View</button></div>
                 </article>
               )
             })}
@@ -203,15 +215,16 @@ export default function App() {
               <div><dt>Supplier source</dt><dd>{selected.source}</dd></div>
               {selected.cataloguePage && <div><dt>2026 catalogue page</dt><dd>{selected.cataloguePage}</dd></div>}
               {selected.hardwareIncluded !== undefined && <div><dt>Hardware</dt><dd>{selected.hardwareIncluded ? 'Included' : 'Not included'}</dd></div>}
-              <div><dt>Retail ex VAT</dt><dd>{money(retailPriceExVat(selected.tradeExVat))}</dd></div>
-              <div><dt>Retail inc VAT</dt><dd>{money(retailPriceIncVat(selected.tradeExVat))}</dd></div>
+              <div><dt>Commercial status</dt><dd>{hasPrice(selected) ? 'Trade price loaded' : 'Compatibility verified · price pending'}</dd></div>
+              {hasPrice(selected) && <div><dt>Retail ex VAT</dt><dd>{money(retailPriceExVat(selected.tradeExVat))}</dd></div>}
+              {hasPrice(selected) && <div><dt>Retail inc VAT</dt><dd>{money(retailPriceIncVat(selected.tradeExVat))}</dd></div>}
             </dl>
-            {selected.kitContents?.length > 0 && <div className="kit-contents"><strong>Kit contents</strong>{selected.kitContents.map((item) => <div key={item.sku}><span>{item.qty} × Tecnoseal {item.sku}</span><button onClick={() => { const component = products.find((p) => p.sku === item.sku); if (component) setSelected(component) }}>{products.some((p) => p.sku === item.sku) ? 'View component' : 'Catalogue component'}</button></div>)}</div>}
-            {kitsForSelected.length > 0 && <div className="kit-options"><strong>Prefer the complete kit?</strong><span>This individual anode is included in the following verified kit{kitsForSelected.length > 1 ? 's' : ''}:</span>{kitsForSelected.map((kit) => <button key={kit.sku} onClick={() => setSelected(kit)}><span>{kit.use} · {kit.material}</span><strong>{money(retailPriceIncVat(kit.tradeExVat))}</strong></button>)}</div>}
+            {selected.kitContents?.length > 0 && <div className="kit-contents"><strong>Kit contents</strong>{selected.kitContents.map((item) => <div key={item.sku}><span>{item.qty} × Tecnoseal {item.sku}</span><button onClick={() => { const component = catalogueProducts.find((p) => p.sku === item.sku); if (component) setSelected(component) }}>{catalogueProducts.some((p) => p.sku === item.sku) ? 'View component' : 'Catalogue component'}</button></div>)}</div>}
+            {kitsForSelected.length > 0 && <div className="kit-options"><strong>Prefer the complete kit?</strong><span>This individual anode is included in the following verified kit{kitsForSelected.length > 1 ? 's' : ''}:</span>{kitsForSelected.map((kit) => <button key={kit.sku} onClick={() => setSelected(kit)}><span>{kit.use} · {kit.material}</span><strong>{priceLabel(kit)}</strong></button>)}</div>}
             <div className="material-note"><strong>Material guidance</strong><span>{materialGuidance(selected.material)}</span></div>
-            {related.length > 0 && <div className="related"><strong>Same OEM reference</strong>{related.map((item) => <button key={item.sku} onClick={() => setSelected(item)}>{item.sku} · {item.material} · {money(retailPriceIncVat(item.tradeExVat))}</button>)}</div>}
+            {related.length > 0 && <div className="related"><strong>Same OEM reference</strong>{related.map((item) => <button key={item.sku} onClick={() => setSelected(item)}>{item.sku} · {item.material} · {priceLabel(item)}</button>)}</div>}
             <div className="verification">Compatibility and dimensions must be verified against current technical data before commercial launch.</div>
-            <button className="primary" onClick={() => addToBasket(selected)}>Add to demo basket · {money(retailPriceIncVat(selected.tradeExVat))}</button>
+            {hasPrice(selected) ? <button className="primary" onClick={() => addToBasket(selected)}>Add to demo basket · {priceLabel(selected)}</button> : <div className="price-pending">Compatibility is loaded from the 2026 catalogue. This item stays non-purchasable until its current trade cost is reconciled.</div>}
           </div>
         </div>
       )}
