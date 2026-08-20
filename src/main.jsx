@@ -8,6 +8,7 @@ import './catalogue-status.css'
 import './myboat.css'
 import './order-simulation.css'
 import './supplier-email.css'
+import './product-images.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
