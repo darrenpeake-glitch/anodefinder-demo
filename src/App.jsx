@@ -115,6 +115,15 @@ export default function App() {
 
   const related = selected ? catalogueProducts.filter((p) => p.sku !== selected.sku && p.oem.some((ref) => selected.oem.includes(ref))) : []
   const kitsForSelected = containingKits(selected)
+  const basketLines = useMemo(() => {
+    const lines = new Map()
+    basket.forEach((product) => {
+      const current = lines.get(product.sku)
+      if (current) current.qty += 1
+      else lines.set(product.sku, { product, qty:1 })
+    })
+    return [...lines.values()]
+  }, [basket])
   const basketTotal = basket.reduce((sum, item) => sum + retailPriceIncVat(item.tradeExVat), 0)
 
   function addToBasket(product) {
@@ -128,8 +137,16 @@ export default function App() {
     setBasket((items) => [...items, product])
   }
 
-  function removeFromBasket(index) {
-    setBasket((items) => items.filter((_, i) => i !== index))
+  function setBasketQuantity(product, quantity) {
+    const qty = Math.max(0, Math.min(99, Number(quantity) || 0))
+    setBasket((items) => {
+      const withoutSku = items.filter((item) => item.sku !== product.sku)
+      return [...withoutSku, ...Array.from({ length:qty }, () => product)]
+    })
+  }
+
+  function removeFromBasket(sku) {
+    setBasket((items) => items.filter((item) => item.sku !== sku))
   }
 
   function chooseCategory(value) {
@@ -269,16 +286,39 @@ export default function App() {
 
       {checkout && (
         <div className="overlay" onClick={() => setCheckout(false)}>
-          <div className="modal checkout" onClick={(e) => e.stopPropagation()}>
+          <div className="modal checkout checkout-wide" onClick={(e) => e.stopPropagation()}>
             <button className="close" onClick={() => setCheckout(false)}>×</button>
             <div className="eyebrow">Simulated checkout</div><h2>Your basket</h2>
-            {basket.length === 0 ? <p>Your demo basket is empty.</p> : <>
-              <div className="basket-lines">{basket.map((item, i) => <div key={`${item.sku}-${i}`}><span>{item.sku} · {item.use}</span><strong>{money(retailPriceIncVat(item.tradeExVat))}</strong><button className="remove" onClick={() => removeFromBasket(i)}>Remove</button></div>)}</div>
-              <div className="basket-total"><span>Total inc VAT</span><strong>{money(basketTotal)}</strong></div>
-              <div className="checkout-grid"><label><span>Name</span><input placeholder="Demo customer" /></label><label><span>Postcode</span><input placeholder="PL1 2AB" /></label></div>
-              <div className="demo-address">Demo only — no payment or customer data is transmitted. Production flow: customer order → supplier PO → direct delivery.</div>
-              <button className="primary" onClick={placeDemoOrder}>Place demo order</button>
-            </>}
+            {basket.length === 0 ? <p>Your demo basket is empty.</p> : <div className="checkout-layout">
+              <div>
+                <div className="basket-lines grouped-basket">{basketLines.map(({ product, qty }) => <div className="basket-line" key={product.sku}>
+                  <div className="basket-product"><strong>{product.use}</strong><span>Tecnoseal {product.sku} · {product.material}</span></div>
+                  <div className="quantity-control"><button onClick={() => setBasketQuantity(product, qty - 1)}>−</button><input aria-label={`Quantity for ${product.sku}`} type="number" min="1" max="99" value={qty} onChange={(e) => setBasketQuantity(product, e.target.value)} /><button onClick={() => setBasketQuantity(product, qty + 1)}>+</button></div>
+                  <strong>{money(retailPriceIncVat(product.tradeExVat) * qty)}</strong>
+                  <button className="remove" onClick={() => removeFromBasket(product.sku)}>Remove</button>
+                </div>)}</div>
+
+                <div className="delivery-panel"><strong>Supplier-direct delivery</strong><span>Production checkout will calculate carriage from the supplier's live terms and delivery postcode. The demo does not invent a delivery charge.</span></div>
+
+                <div className="checkout-grid checkout-address">
+                  <label><span>Name</span><input placeholder="Demo customer" /></label>
+                  <label><span>Email</span><input type="email" placeholder="customer@example.com" /></label>
+                  <label className="address-wide"><span>Address</span><input placeholder="1 Marina Road" /></label>
+                  <label><span>Town / city</span><input placeholder="Plymouth" /></label>
+                  <label><span>Postcode</span><input placeholder="PL1 2AB" /></label>
+                </div>
+              </div>
+
+              <aside className="order-summary">
+                <div className="order-summary-head"><span>Order summary</span><strong>{basket.length} item{basket.length === 1 ? '' : 's'}</strong></div>
+                <div><span>Products inc VAT</span><strong>{money(basketTotal)}</strong></div>
+                <div><span>Delivery</span><strong>Calculated live</strong></div>
+                <div className="order-total"><span>Current demo total</span><strong>{money(basketTotal)}</strong></div>
+                <small>Delivery is excluded until live supplier carriage rules are connected.</small>
+                <div className="demo-address">Demo only — no payment or customer data is transmitted. A production order will create the customer order, payment record and supplier PO.</div>
+                <button className="primary" onClick={placeDemoOrder}>Place demo order</button>
+              </aside>
+            </div>}
           </div>
         </div>
       )}
