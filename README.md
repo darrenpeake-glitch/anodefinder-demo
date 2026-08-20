@@ -15,6 +15,10 @@ Proof-of-concept for an independent marine-anode retailer built around **compati
 
 The demo dataset is intentionally small. Trade costs are taken from the supplied **Tecnoseal UK Trade Price List — September 2022**, including the workbook's **Engine Kits — Revised Dec 2024** sheet. Technical compatibility must be verified against current manufacturer data before commercial use.
 
+## Deployment
+
+GitHub Pages is deployed from GitHub Actions on pushes to `main`.
+
 ## Important
 
 This is a demo only. It is not affiliated with or endorsed by Tecnoseal, Volvo Penta, Mercury/MerCruiser, Sleipner or any other referenced manufacturer. Third-party names and OEM references are used only as compatibility references.
