@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { products, retailPriceExVat, retailPriceIncVat, money, TARGET_MARGIN, FLOOR_MARGIN } from './data/products.js'
 import { mercuryCatalogue } from './data/mercuryCatalogue.js'
+import MyBoat from './MyBoat.jsx'
 
 const catalogueProducts = [...products, ...mercuryCatalogue]
 const categories = ['All','Volvo Penta','Mercury / MerCruiser','Sleipner']
@@ -122,6 +123,7 @@ export default function App() {
       <header className="topbar">
         <div className="brandmark">AF</div>
         <div className="brandcopy"><strong>AnodeFinder</strong><span>Demo storefront</span></div>
+        <a className="myboat-nav" href="#my-boat">My Boat</a>
         <button className="basket-button" onClick={() => setCheckout(true)}>Basket <span>{basket.length}</span></button>
       </header>
 
@@ -160,6 +162,8 @@ export default function App() {
           {category !== 'All' && equipment !== 'All' && <div className="finder-confirmation">Showing verified demo records associated with <strong>{category} {equipment}</strong>. Both priced trade-list records and verified catalogue-only compatibility records can appear.</div>}
           {water === 'Fresh' && <div className="finder-warning">Fresh-water filtering only returns magnesium records. Where a current trade price has not yet been reconciled, the part remains visible as catalogue-only rather than receiving an invented price.</div>}
         </section>
+
+        <MyBoat products={catalogueProducts} onViewProduct={setSelected} onAddProduct={addToBasket} />
 
         <section className="catalogue">
           <div className="section-head">
