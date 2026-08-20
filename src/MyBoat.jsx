@@ -2,14 +2,43 @@ import { useEffect, useMemo, useState } from 'react'
 import { retailPriceIncVat, money } from './data/products.js'
 
 const STORAGE_KEY = 'anodefinder.myboat.v1'
+const HISTORY_KEY = 'anodefinder.myboat.service.v1'
+
+function loadJson(key, fallback) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || 'null')
+    return saved ?? fallback
+  } catch {
+    return fallback
+  }
+}
 
 function loadBoat() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-    return saved && typeof saved === 'object' ? saved : null
-  } catch {
-    return null
-  }
+  const saved = loadJson(STORAGE_KEY, null)
+  return saved && typeof saved === 'object' ? saved : null
+}
+
+function loadHistory() {
+  const saved = loadJson(HISTORY_KEY, [])
+  return Array.isArray(saved) ? saved : []
+}
+
+function todayIso() {
+  const now = new Date()
+  const offset = now.getTimezoneOffset()
+  return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10)
+}
+
+function addMonths(dateString, months) {
+  if (!months) return null
+  const date = new Date(`${dateString}T12:00:00`)
+  date.setMonth(date.getMonth() + Number(months))
+  return date.toISOString().slice(0, 10)
+}
+
+function formatDate(value) {
+  if (!value) return 'Not set'
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T12:00:00`))
 }
 
 function materialMatches(product, water) {
@@ -44,6 +73,11 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
   const [thruster, setThruster] = useState(() => loadBoat()?.thruster || '')
   const [water, setWater] = useState(() => loadBoat()?.water || 'Salt')
   const [addedAll, setAddedAll] = useState(false)
+  const [history, setHistory] = useState(() => loadHistory())
+  const [recordingService, setRecordingService] = useState(false)
+  const [serviceDate, setServiceDate] = useState(() => todayIso())
+  const [reminderMonths, setReminderMonths] = useState('12')
+  const [serviceNote, setServiceNote] = useState('')
 
   const driveBrands = useMemo(() =>
     [...new Set(products.filter((p) => p.applicationBrand !== 'Sleipner').map((p) => p.applicationBrand))].sort(),
@@ -65,15 +99,12 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
 
   const recommendationGroups = useMemo(() => {
     if (!savedBoat) return []
-
-    const groups = [
-      {
-        key: 'drive',
-        label: 'Drive',
-        equipment: `${savedBoat.driveBrand} · ${savedBoat.drive}`,
-        products: bestEquipmentProducts(products, savedBoat.driveBrand, savedBoat.drive, savedBoat.water),
-      },
-    ]
+    const groups = [{
+      key: 'drive',
+      label: 'Drive',
+      equipment: `${savedBoat.driveBrand} · ${savedBoat.drive}`,
+      products: bestEquipmentProducts(products, savedBoat.driveBrand, savedBoat.drive, savedBoat.water),
+    }]
 
     if (savedBoat.thruster) {
       groups.push({
@@ -83,7 +114,6 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
         products: bestEquipmentProducts(products, 'Sleipner', savedBoat.thruster, savedBoat.water),
       })
     }
-
     return groups
   }, [products, savedBoat])
 
@@ -97,6 +127,11 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
       return true
     })
   }, [recommendationGroups])
+
+  const boatHistory = useMemo(() => {
+    if (!savedBoat) return []
+    return history.filter((entry) => entry.boatName === savedBoat.name).sort((a, b) => b.date.localeCompare(a.date))
+  }, [history, savedBoat])
 
   function saveBoat() {
     if (!name.trim() || !drive) return
@@ -120,6 +155,11 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
   }
 
   function forgetBoat() {
+    if (savedBoat) {
+      const remainingHistory = history.filter((entry) => entry.boatName !== savedBoat.name)
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(remainingHistory))
+      setHistory(remainingHistory)
+    }
     localStorage.removeItem(STORAGE_KEY)
     setSavedBoat(null)
     setName('')
@@ -137,6 +177,38 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
     setAddedAll(true)
   }
 
+  function recordService() {
+    if (!savedBoat || !serviceDate || !recommendations.length) return
+    const entry = {
+      id: `${Date.now()}`,
+      boatName: savedBoat.name,
+      date: serviceDate,
+      reminderMonths: Number(reminderMonths),
+      reminderDate: addMonths(serviceDate, Number(reminderMonths)),
+      note: serviceNote.trim(),
+      equipment: {
+        driveBrand: savedBoat.driveBrand,
+        drive: savedBoat.drive,
+        thruster: savedBoat.thruster,
+        water: savedBoat.water,
+      },
+      items: recommendations.map(({ product, system }) => ({ sku: product.sku, system })),
+    }
+    const next = [entry, ...history]
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
+    setHistory(next)
+    setRecordingService(false)
+    setServiceNote('')
+  }
+
+  function reorderEntry(entry) {
+    entry.items
+      .map((item) => products.find((product) => product.sku === item.sku))
+      .filter(Boolean)
+      .filter(priced)
+      .forEach((product) => onAddProduct(product))
+  }
+
   const pricedProducts = recommendations.map(({ product }) => product).filter(priced)
   const pricedTotal = pricedProducts.reduce((sum, product) => sum + retailPriceIncVat(product.tradeExVat), 0)
   const pendingCount = recommendations.filter(({ product }) => !priced(product)).length
@@ -144,6 +216,7 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
   const totalSystems = recommendationGroups.length
   const coverageComplete = totalSystems > 0 && matchedSystems === totalSystems
   const commercialComplete = recommendations.length > 0 && pendingCount === 0
+  const lastService = boatHistory[0] || null
 
   return (
     <section className="myboat" id="my-boat">
@@ -179,11 +252,38 @@ export default function MyBoat({ products, onViewProduct, onAddProduct }) {
             <div className={commercialComplete ? 'coverage-ok' : 'coverage-warn'}><span>Commercial coverage</span><strong>{commercialComplete ? 'Ready to price' : `${pendingCount} price${pendingCount === 1 ? '' : 's'} pending`}</strong><small>{commercialComplete ? 'Every shortlisted item has a trade cost loaded.' : 'Compatibility is retained even where supplier pricing is not yet loaded.'}</small></div>
           </div>
 
+          <div className="service-status">
+            <div><span>Last recorded replacement</span><strong>{lastService ? formatDate(lastService.date) : 'No service history yet'}</strong></div>
+            <div><span>Next reminder</span><strong>{lastService?.reminderDate ? formatDate(lastService.reminderDate) : 'Not set'}</strong></div>
+            <button onClick={() => setRecordingService((value) => !value)}>{recordingService ? 'Cancel' : 'Record replacement'}</button>
+          </div>
+
+          {recordingService && <div className="service-form">
+            <div><strong>Record this shortlist as replaced</strong><span>Demo history records the currently matched SKUs against this boat. In production, customers will be able to tick individual fitted parts.</span></div>
+            <label><span>Replacement date</span><input type="date" value={serviceDate} onChange={(e) => setServiceDate(e.target.value)} /></label>
+            <label><span>Remind me in</span><select value={reminderMonths} onChange={(e) => setReminderMonths(e.target.value)}><option value="0">No reminder</option><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option><option value="18">18 months</option><option value="24">24 months</option></select></label>
+            <label className="service-note"><span>Note (optional)</span><input value={serviceNote} onChange={(e) => setServiceNote(e.target.value)} placeholder="e.g. all anodes changed at lift-out" /></label>
+            <button className="primary" disabled={!recommendations.length} onClick={recordService}>Save service record</button>
+          </div>}
+
           <div className="annual-head"><div><strong>Annual anode shortlist</strong><span>Compatibility matches from the verified demo catalogue.</span></div>{recommendations.length > 0 && <div><strong>{pricedTotal > 0 ? money(pricedTotal) : '—'}</strong><span>{pendingCount ? `${pendingCount} price${pendingCount === 1 ? '' : 's'} pending` : 'priced items inc VAT'}</span></div>}</div>
 
           {recommendations.length > 0 ? <div className="annual-list">{recommendations.map(({ product, system }) => <article key={product.sku}><div><span className="annual-system">{system}</span><strong>{product.use}</strong><span>Tecnoseal {product.sku} · {product.material}</span></div><div className="annual-price"><strong>{priced(product) ? money(retailPriceIncVat(product.tradeExVat)) : 'Price pending'}</strong><button onClick={() => onViewProduct(product)}>View</button>{priced(product) && <button className="add-small" onClick={() => onAddProduct(product)}>Add</button>}</div></article>)}</div> : <div className="boat-empty">No verified {savedBoat.water.toLowerCase()}-water records are currently loaded for this equipment combination. The boat profile is still saved.</div>}
 
           {pricedProducts.length > 0 && <div className="annual-bulk"><div><strong>{pricedProducts.length} purchasable item{pricedProducts.length === 1 ? '' : 's'}</strong><span>{pendingCount ? `You can add the priced part of this shortlist now; ${pendingCount} record${pendingCount === 1 ? '' : 's'} remain price-pending.` : 'All shortlisted items have pricing loaded.'}</span></div><button className="primary" onClick={addAllPriced}>{addedAll ? 'Added to basket ✓' : `Add all priced · ${money(pricedTotal)}`}</button></div>}
+
+          <div className="service-history">
+            <div className="service-history-head"><div><strong>Service history</strong><span>{boatHistory.length ? `${boatHistory.length} replacement record${boatHistory.length === 1 ? '' : 's'} stored on this device.` : 'Record a replacement to start the vessel history.'}</span></div></div>
+            {boatHistory.map((entry) => {
+              const currentItems = entry.items.map((item) => products.find((product) => product.sku === item.sku)).filter(Boolean)
+              const reorderable = currentItems.filter(priced)
+              const reorderTotal = reorderable.reduce((sum, product) => sum + retailPriceIncVat(product.tradeExVat), 0)
+              return <article className="service-entry" key={entry.id}>
+                <div><span>{formatDate(entry.date)}</span><strong>{entry.items.length} recorded anode line{entry.items.length === 1 ? '' : 's'}</strong><small>{entry.items.map((item) => item.sku).join(' · ')}</small>{entry.note && <small>{entry.note}</small>}</div>
+                <div className="service-entry-actions"><span>{entry.reminderDate ? `Reminder ${formatDate(entry.reminderDate)}` : 'No reminder'}</span>{reorderable.length > 0 && <button onClick={() => reorderEntry(entry)}>Reorder priced items · {money(reorderTotal)}</button>}</div>
+              </article>
+            })}
+          </div>
 
           <div className="annual-disclaimer">This is a compatibility shortlist, not yet a guaranteed complete service schedule. Production My Boat will only call a set “complete” when every fitted system and required quantity has been explicitly mapped.</div>
         </>
