@@ -1,9 +1,9 @@
 const imageBySku = new Map([
-  ['KITALPHAONE/AL', 'https://www.tecnoseal-online-catalogue.it/slir/c1x1/source/foto_catalogo/4.1/kitalphaoneal.png'],
+  ['KITALPHAONE/AL', 'https://www.anodefactory.de/cdn/shop/products/KIT_MERCURY_ALPHA1_GEN2-e1558097383101_542x302.jpg?v=1633414785'],
 ])
 
 export function productImage(product) {
   return product ? imageBySku.get(product.sku) || null : null
 }
 
-export const DEMO_IMAGE_NOTE = 'Official Tecnoseal online-catalogue image shown for demonstration. Confirm supplier permission/asset delivery before commercial launch.'
+export const DEMO_IMAGE_NOTE = 'Third-party open-web product image shown for demonstration only. Replace with supplier-approved production imagery before launch.'
