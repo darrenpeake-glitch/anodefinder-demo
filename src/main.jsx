@@ -5,6 +5,7 @@ import App from './App.jsx'
 import './styles.css'
 import './sprint01.css'
 import './catalogue-status.css'
+import './myboat.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
