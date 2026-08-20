@@ -7,6 +7,7 @@ import './sprint01.css'
 import './catalogue-status.css'
 import './myboat.css'
 import './order-simulation.css'
+import './supplier-email.css'
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
